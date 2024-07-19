@@ -1,0 +1,61 @@
+centroid_of_contour(contour): This function calculates the centroid of a contour.
+
+def centroid_of_contour(contour):
+  M = cv2.moments(contour)
+  cX = int(M["m10"] / M["m00"])
+  cY = int(M["m01"] / M["m00"])
+  return (cX, cY)
+
+
+
+draw_parking_zones(image, parking_spots_list): This function draws rectangles over the defined parking zones.
+
+def draw_parking_zones(image, parking_spots_list):
+  for spot in parking_spots_list:
+    x, y, w, h = spot
+    cv2.rectangle(image, (x, y), (x + w, y + h), (255, 0, 0), 2)
+  return image
+
+
+detect_occupancy(image, parking_spots_list, threshold=100): This function is the core logic for occupancy detection.
+
+
+def detect_occupancy(image, parking_spots_list, threshold=100):
+  gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+  blur = cv2.GaussianBlur(gray, (5, 5), 0)
+  thresh = cv2.threshold(blur, threshold, 255, cv2.THRESH_BINARY)[1]
+
+  # Find contours
+  cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+  cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+
+  # Loop through contours and check if they lie within parking zones
+  occupancy_list = []
+  for c in cnts:
+    area = cv2.contourArea(c)
+    if area > 100:  # Adjust threshold based on image resolution
+      M = cv2.moments(c)
+      cX, cY = centroid_of_contour(c)
+      for spot in parking_spots_list:
+        x, y, w, h = spot
+        if x < cX < x + w and y < cY < y + h:
+          occupancy_list.append([spot, False])  # Initially mark all spots as empty
+          break
+
+  # Check if any centroid falls within the zone
+  for spot, _ in occupancy_list:
+    for c in cnts:
+      cX, cY = centroid_of_contour(c)
+      x, y, w, h = spot
+      if cv2.pointPolygonTest(c, (cX, cY), False) > 0:  # Check if point is inside polygon
+        occupancy_list.remove([spot, False])
+        occupancy_list.append([spot, True])  # Update occupancy status
+
+  # Draw occupancy status on image
+  for spot, is_occupied in occupancy_list:
+    x, y, w, h = spot
+    text = "Occupied" if is_occupied else "Empty"
+    cv2.putText(image, text, (x + (w // 2) - 10, y + (h // 2) - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0) if not is_occupied else (0, 0, 255), 2)
+
+  return image, occupancy_list
+
